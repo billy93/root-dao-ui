@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" type="text/css" href="../dependencies/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cast Vote</title>
+</head>
+<body>
+  <h1>Cast My Vote</h1>
+  <div id="web3-warning" class="hidden warning">
+    Make sure the example app is being served with an HTTP server. <br />
+    Please install MetaMask: <a href="https://metamask.io/">https://metamask.io/</a>
+  </div>
+  <div class="card">
+    <label>My Address: </label>&nbsp;<span id="my-address"></span>
+    <br />
+    <label>My Vote Weight: </label>&nbsp;<span id="vote-weight"></span>
+    <br />
+    <label>Proposal: </label>&nbsp;<select id="proposal-selector"></select>
+    <br />
+    <label>Vote: </label>&nbsp;
+    <input type="radio" id="for" name="vote" value="for">
+    <label for="for">For</label>&nbsp;
+    <input type="radio" id="against" name="vote" value="against">
+    <label for="against">Against</label>
+    <input type="radio" id="abstain" name="vote" value="abstain">
+    <label for="abstain">Abstain</label>
+    <br/ >
+    <div id="loader" class="loader-container hidden">
+      <div class="loader"></div>
+      <span>Ethereum transactions may take a few minutes to be mined.</span>
+    </div>
+    <br />
+    <input id="submit" type="submit" value="Cast Vote" />
+  </div>
+</body>
+
+<script type="text/javascript" src="../dependencies/gov-abi.js"></script>
+<script type="text/javascript" src="../dependencies/comp-abi.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/ethereum/web3.js@1.4.0/dist/web3.min.js"></script>
+<script type="text/javascript">
+  window.addEventListener('load', (event) => {
+    let web3;
+    const web3Warning = document.getElementById('web3-warning');
+    const myAddress = document.getElementById('my-address');
+    const voteWeight = document.getElementById('vote-weight');
+    const proposalSelector = document.getElementById('proposal-selector');
+    const submit = document.getElementById('submit');
+    const loader = document.getElementById('loader');
+    const _for = document.getElementById('for');
+    const against = document.getElementById('against');
+    const abstain = document.getElementById('abstain');
+
+    let myAccount, governanceAddress, governanceAbi, gov;
+
+    if (typeof window.ethereum === 'undefined') {
+      console.error('Client does not have an active Web3 provider or the example app is not being run from an HTTP server.');
+      console.log('Go here to install MetaMask: https://metamask.io/');
+      alert(
+        'You need a Web3 provider to run this page. ' + 
+        'Go here to install MetaMask:\n\n' +
+        'https://metamask.io/'
+      );
+      web3Warning.classList.remove('hidden');
+    } else {
+      main();
+    }
+
+    async function main() {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }); // enable ethereum
+      web3 = new Web3(window.ethereum);
+      const net = +window.ethereum.chainId;
+
+      const compAddress = '0xc18B0B4BC745Eeb8c5D890b705E47E96F38d92F4';
+      const compAbi = window.compAbi;
+      const comp = new web3.eth.Contract(compAbi, compAddress);
+
+      governanceAddress = "0x1ef0Bf46B37292EF54DfE49689ee0DB3013a6b97";
+      // This app only works with Ropsten or Main
+      // if (net !== 1 && net !== 3) {
+      //   alert('Please select the Main or Ropsten network.');
+      // }
+
+      // if (net === 1) {
+      //   governanceAddress = '0xc0Da02939E1441F497fd74F78cE7Decb17B66529';
+      // } else if (net === 3) {
+      //   governanceAddress = '0x087e98b40f988e0e1d1de476b2b8d2271ac84b33';
+      // }
+
+      myAccount = accounts[0];
+
+      myAddress.innerText = myAccount;
+
+      governanceAbi = window.governanceAbi;
+      gov = new web3.eth.Contract(governanceAbi, governanceAddress);
+
+      // Add a list of active proposals to the UI
+      getProposals();
+
+      // Get my account's vote weight
+      getMyVoteWeight(myAccount);
+
+      submit.onclick = async () => {
+        // An active proposal needs to be selected in the UI
+        if (proposalSelector.value < 1) {
+          alert('Select a proposal to vote in.');
+          return;
+        }
+
+        // A vote choice needs to be selected in the UI
+        if (!_for.checked && !against.checked && !abstain.checked) {
+          alert('Select a vote option.');
+          return;
+        }
+
+        const proposal = proposalSelector.value;
+        let textType = 'against';
+        let vote = 0;
+        if (_for.checked) {
+          textType = 'for';
+          vote = 1;
+        } else if (abstain.checked) {
+          textType = 'abstain';
+          vote = 2;
+        }
+
+        loader.classList.remove('hidden');
+        try {
+          const tx = await gov.methods.castVote(proposal, vote).send({ from: myAccount });
+          console.log(tx);
+          alert(`Successfully voted ${textType} Proposal ${proposal}`);
+          window.location.reload();
+        } catch(e) {
+          console.error(e);
+          alert(e.message);
+        }
+        loader.classList.add('hidden');
+      };
+
+      async function getProposals() {
+        const proposalCreatedEvents = await gov.getPastEvents('ProposalCreated', {
+          fromBlock: 0,
+          toBlock: 'latest'
+        });
+
+        proposalSelector.options[proposalSelector.options.length] = new Option('Select Active Proposal', 0);
+        for(let i=0;i<proposalCreatedEvents.length;i++){
+          var id = proposalCreatedEvents[i].returnValues.proposalId;
+          var proposal = await gov.methods.proposals(id).call();
+          proposalSelector.options[proposalSelector.options.length] = new Option(proposal.id, proposal.id);
+        }
+        // const network = net === '1' ? 'mainnet' : 'ropsten';
+        // // fetch(`https://api.compound.finance/api/v2/governance/proposals`)
+        // fetch(`https://api.compound.finance/api/v2/governance/proposals?network=${network}&state=active`)
+        //   .then((response) => response.json())
+        //   .then((result) => {
+        //     console.log(result);
+        //     let proposals = result.proposals || [];
+        //     proposalSelector.options[proposalSelector.options.length] = new Option('Select Active Proposal', 0);
+        //     for (let i in proposals) {
+        //       proposalSelector.options[proposalSelector.options.length] = new Option(proposals[i].id, proposals[i].id);
+        //     }
+        //   });
+      }
+
+      async function getMyVoteWeight(acct) {
+
+        const delegations = await comp.getPastEvents('DelegateVotesChanged', {
+          fromBlock: 0,
+          toBlock: 'latest'
+        });
+
+        const delegateAccounts = {};
+
+        delegations.forEach(e => {
+          const { delegate, newBalance } = e.returnValues;
+          delegateAccounts[delegate] = newBalance;
+        });
+
+      const delegates = [];
+      Object.keys(delegateAccounts).forEach((account) => {
+        // if(acct == account){
+          const voteWeight = +delegateAccounts[account];
+          if (voteWeight === 0) return;
+          delegates.push({
+            delegate: account,
+            vote_weight: voteWeight
+          });
+        // }
+      });
+
+      delegates.sort((a, b) => {
+        return a.vote_weight < b.vote_weight ? 1 : -1;
+      });
+
+      const maxSupply = 1000;
+      delegates.forEach(d => {
+        d.vote_weight = (100 * ((d.vote_weight / 1e18) / maxSupply)).toFixed(6) + '%';
+
+        voteWeight.innerText = d.vote_weight;
+      });
+        // const network = net === 1 ? 'mainnet' : 'ropsten';
+        // fetch(`https://api.compound.finance/api/v2/governance/accounts?network=${network}&addresses=${account}`)
+        //   .then((response) => response.json())
+        //   .then((result) => {
+        //     console.log(result);
+        //     let percentOfVotes = 'ERROR';
+        //     try {
+        //       percentOfVotes = `${parseFloat(result.accounts[0].vote_weight).toFixed(4)}%`;
+        //     } catch (e) {
+        //       console.error(e, result);
+        //       percentOfVotes = 0;
+        //     }
+        //     voteWeight.innerText = percentOfVotes;
+        //   });
+      }
+    }
+  });
+</script>
+
+</html>

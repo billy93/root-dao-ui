@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" type="text/css" href="../dependencies/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set Delegate</title>
+</head>
+<body>
+  <h1>Delegate My Votes</h1>
+  <div id="web3-warning" class="hidden warning">
+    Make sure the example app is being served with an HTTP server. <br />
+    Please install MetaMask: <a href="https://metamask.io/">https://metamask.io/</a>
+  </div>
+  <div class="card">
+    <label>My Address: </label>&nbsp;<span id="my-address"></span>
+    <br />
+    <label>My Current Delegate: </label>&nbsp;<span id="current-delegate"></span>
+    <br />
+    <label>My New Delegate: </label>&nbsp;<input id="new-delegate" type="text" />
+    <div id="loader" class="loader-container hidden">
+      <div class="loader"></div>
+      <span>Ethereum transactions may take a few minutes to be mined.</span>
+    </div>
+    <br />
+    <input id="submit" type="submit" value="Delegate" />
+  </div>
+</body>
+
+<script type="text/javascript" src="../dependencies/comp-abi.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/ethereum/web3.js@1.4.0/dist/web3.min.js"></script>
+<script type="text/javascript">
+  window.addEventListener('load', (event) => {
+    let web3;
+    const web3Warning = document.getElementById('web3-warning');
+    const myAddress = document.getElementById('my-address');
+    const delegate = document.getElementById('current-delegate');
+    const newDelegate = document.getElementById('new-delegate');
+    const submit = document.getElementById('submit');
+    const loader = document.getElementById('loader');
+    let myAccount, compAddress, compAbi, comp;
+
+    if (typeof window.ethereum === 'undefined') {
+      console.error('Client does not have an active Web3 provider or the example app is not being run from an HTTP server.');
+      console.log('Go here to install MetaMask: https://metamask.io/');
+      alert(
+        'You need a Web3 provider to run this page. ' + 
+        'Go here to install MetaMask:\n\n' +
+        'https://metamask.io/'
+      );
+      web3Warning.classList.remove('hidden');
+    } else {
+      main();
+    }
+
+    async function main() {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }); // enable ethereum
+      web3 = new Web3(window.ethereum);
+      const net = +window.ethereum.chainId;
+
+      // This app only works with Ropsten or Main
+      // if (net !== 1 && net !== 3) {
+      //   alert('Please select the Main or Ropsten network.');
+      // }
+
+      compAddress = '0xc18B0B4BC745Eeb8c5D890b705E47E96F38d92F4';
+
+      // if (net === 1) {
+      //   compAddress = '0xc00e94cb662c3520282e6f5717214004a7f26888';
+      // } else if (net === 3) {
+      //   compAddress = '0xf76d4a441e4ba86a923ce32b89aff89dbccaa075';
+      // }
+
+      myAccount = accounts[0];
+
+      myAddress.innerText = myAccount;
+
+      compAbi = window.compAbi;
+      comp = new web3.eth.Contract(compAbi, compAddress);
+
+      let currentDelegate;
+      try {
+        console.log(await comp.methods.delegates(myAccount).call())
+        currentDelegate = await comp.methods.delegates(myAccount).call();
+      } catch (e) {
+        console.log(e);
+        currentDelegate = 0;
+      }
+
+      delegate.innerText = currentDelegate == 0 ? 'None' : currentDelegate;
+
+      submit.onclick = async () => {
+        const delegateTo = newDelegate.value;
+
+        if (!delegateTo) {
+          alert('Invalid address to delegate your votes.');
+          return;
+        }
+
+        loader.classList.remove('hidden');
+        try {
+          const tx = await comp.methods.delegate(delegateTo).send({ from: myAccount });
+          console.log(tx);
+          alert(`Successfully Delagated to ${delegateTo}`);
+          window.location.reload();
+        } catch(e) {
+          console.error(e);
+          alert(e.message);
+        }
+        loader.classList.add('hidden');
+      };
+    }
+  });
+</script>
+
+</html>
